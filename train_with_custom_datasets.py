@@ -150,15 +150,15 @@ if __name__ == "__main__":
     ready = True
     array = []
     model_name = args.model_name
-    array[0] = model_name
     model_type = args.model_type
-    array[1] = model_type
     tokenizer_name = args.tokenizer_name
-    array[2] = tokenizer_name
     train_dataset = args.train_dataset
-    array[3] = train_dataset
     output_dir = args.output_dir
-    array[4] = output_dir
+    array.insert(0, model_name)
+    array.insert(1, model_type)
+    array.insert(2, tokenizer_name)
+    array.insert(3, train_dataset)
+    array.insert(4, output_dir)
     for val in array:
         if val == "" or val == None:
             print("Need to provide all parameters.")
