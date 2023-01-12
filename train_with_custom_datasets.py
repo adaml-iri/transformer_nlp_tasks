@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForTokenClassification, Trainer, TrainingArguments, TFAutoModelForTokenClassification
+from transformers import AutoTokenizer, AutoModelForTokenClassification, Trainer, TrainingArguments, TFAutoModelForTokenClassification, AutoConfig
 import numpy as np
 import torch
 import tensorflow as tf
@@ -76,9 +76,10 @@ class NER_Trainer:
     def trainer(self):
         texts, tags = NER_Trainer.read_wnut(self.infile_dataset)
         train_texts, val_texts, train_tags, val_tags = train_test_split(texts, tags, test_size=.2)
-        unique_tags = set(tag for doc in tags for tag in doc)
-        tag2id = {tag: id for id, tag in enumerate(unique_tags)}
-        #id2tag = {id: tag for tag, id in tag2id.items()}
+        temp = AutoModelForTokenClassification.from_pretrained(self.model_name)
+        
+        id2tag = temp.config.id2label
+        tag2id = temp.config.label2id
         tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
         train_encodings = tokenizer(train_texts, is_split_into_words=True, return_offsets_mapping=True, padding=True, truncation=True)
         val_encodings = tokenizer(val_texts, is_split_into_words=True, return_offsets_mapping=True, padding=True, truncation=True)
@@ -86,10 +87,11 @@ class NER_Trainer:
         val_labels = NER_Trainer.encode_tags(val_tags, val_encodings, tag2id)
         train_encodings.pop("offset_mapping") # we don't want to pass this to the model
         val_encodings.pop("offset_mapping")
+        config = AutoConfig.from_pretrained(self.model_name, label2id=tag2id, id2label=id2tag)
         if (self.model_type == "PYTORCH") :
             train_dataset = WNUTDataset(train_encodings, train_labels)
             val_dataset = WNUTDataset(val_encodings, val_labels)
-            NER_Trainer.pytorch_trainer(self, train_dataset, val_dataset, unique_tags)
+            NER_Trainer.pytorch_trainer(self, train_dataset, val_dataset,  config)
         elif (self.model_type == "TENSORFLOW"):
             train_dataset = tf.data.Dataset.from_tensor_slices((
                 dict(train_encodings),
@@ -99,14 +101,14 @@ class NER_Trainer:
                 dict(val_encodings),
                 val_labels
             ))
-            NER_Trainer.tensorflow_trainer(self, train_dataset, val_dataset, unique_tags)
+            NER_Trainer.tensorflow_trainer(self, train_dataset, val_dataset,  config)
         else:
             return -1
         return 0
         
 
-    def pytorch_trainer(self, train_dataset, val_dataset, unique_tags):
-        model = AutoModelForTokenClassification.from_pretrained(self.model_name, num_labels=len(unique_tags))
+    def pytorch_trainer(self, train_dataset, val_dataset, config):
+        model = AutoModelForTokenClassification.from_pretrained(self.model_name, config=config)
         training_args = TrainingArguments(
             output_dir=self.output_dir,          # output directory
             num_train_epochs=3,              # total number of training epochs
@@ -128,8 +130,9 @@ class NER_Trainer:
         trainer.train()
         trainer.save_model(self.output_dir)
 
-    def tensorflow_trainer(self, train_dataset, val_dataset, unique_tags):
-        model = TFAutoModelForTokenClassification.from_pretrained(self.model_name, num_labels=len(unique_tags))
+    def tensorflow_trainer(self, train_dataset, val_dataset, config):
+
+        model = TFAutoModelForTokenClassification.from_pretrained(self.model_name, config=config)
         optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
         model.compile(optimizer=optimizer, loss=model.hf_compute_loss) # can also use any keras loss fn
         model.fit(train_dataset.shuffle(1000).batch(16), epochs=3, batch_size=16)

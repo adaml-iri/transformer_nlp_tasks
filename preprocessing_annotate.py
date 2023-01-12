@@ -109,7 +109,7 @@ if __name__ == "__main__":
             ready = False
 
     if ready:
-        nlp = NLP_Preprocessing_Annotate(model_name, tokenizer_name, model_type, "simple", dataset, output_dir)
+        nlp = NLP_Preprocessing_Annotate(model_name, tokenizer_name, model_type, "none", dataset, output_dir)
         success = nlp.annotate()
         if success == -1:
             print("Failed to train model.")
