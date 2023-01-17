@@ -6,7 +6,8 @@ import os
 import torch
 import pysbd
 from itertools import islice
-
+import tensorflow as tf
+import numpy as np
 
 class NLP_Preprocessing:
     model_name = None
@@ -41,10 +42,11 @@ class NLP_Preprocessing:
         tab = '\t'
         newline = '\n'
         model = None
+        type_str = "pt"
         if self.model_type == "PYTORCH":
-            model = nlp.pytorch_model()
+            model, type_str = nlp.pytorch_model()
         elif self.model_type == "TENSORFLOW":
-            model = nlp.tensorflow_model()
+            model, type_str = nlp.tensorflow_model()
         else :
             return -1
         tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name, aggregation_strategy="none")
@@ -63,15 +65,26 @@ class NLP_Preprocessing:
                 list_of_sentences = seg.segment(text)
                 for sentence in list_of_sentences:
                     sentence = sentence.strip()       
-                    inputs = tokenizer(sentence, return_tensors="pt")
+                    inputs = tokenizer(sentence, return_tensors=type_str)
                     tokens = inputs.tokens()
-                    outputs = model(**inputs).logits
-                    predictions = torch.argmax(outputs, dim=2)
-                    for token, prediction in zip(tokens, predictions[0].numpy()):
-                        if (token == "[SEP]" or token == "[CLS]"):
-                            continue
-                        line_in_csv = token + tab +model.config.id2label[prediction] + newline
-                        out_file.write(line_in_csv)
+                    if self.model_type == "PYTORCH":
+                        outputs = model(**inputs).logits
+                        predictions = torch.argmax(outputs, dim=2)
+                        for token, prediction in zip(tokens, predictions[0].numpy()):
+                            if (token == "[SEP]" or token == "[CLS]"):
+                                continue
+                            line_in_csv = token + tab +model.config.id2label[prediction] + newline
+                            out_file.write(line_in_csv)
+                    elif self.model_type == "TENSORFLOW" :
+                        logits = model(**inputs).logits
+                        predicted_token_class_ids = tf.math.argmax(logits, axis=-1)
+                        predicted_token_class = [model.config.id2label[t] for t in predicted_token_class_ids[0].numpy().tolist()]
+                        predictions = predicted_token_class
+                        for token, prediction in zip(tokens, predictions):
+                            if (token == "[SEP]" or token == "[CLS]"):
+                                continue
+                            line_in_csv = token + tab + prediction + newline
+                            out_file.write(line_in_csv)
                     
                 text = ""
             line = in_file.readline()
@@ -79,16 +92,27 @@ class NLP_Preprocessing:
             # Handle remaing lines
             list_of_sentences = seg.segment(text)
             for sentence in list_of_sentences:
-                sentence = sentence.strip()       
-                inputs = tokenizer(sentence, return_tensors="pt")
-                tokens = inputs.tokens()
-                outputs = model(**inputs).logits
-                predictions = torch.argmax(outputs, dim=2)
-                for token, prediction in zip(tokens, predictions[0].numpy()):
-                    if (token == "[SEP]" or token == "[CLS]"):
-                        continue
-                    line_in_csv = token + tab +model.config.id2label[prediction] + newline
-                    out_file.write(line_in_csv)
+                    sentence = sentence.strip()       
+                    inputs = tokenizer(sentence, return_tensors=type_str)
+                    tokens = inputs.tokens()
+                    if self.model_type == "PYTORCH":
+                        outputs = model(**inputs).logits
+                        predictions = torch.argmax(outputs, dim=2)
+                        for token, prediction in zip(tokens, predictions[0].numpy()):
+                            if (token == "[SEP]" or token == "[CLS]"):
+                                continue
+                            line_in_csv = token + tab +model.config.id2label[prediction] + newline
+                            out_file.write(line_in_csv)
+                    elif self.model_type == "TENSORFLOW" :
+                        logits = model(**inputs).logits
+                        predicted_token_class_ids = tf.math.argmax(logits, axis=-1)
+                        predicted_token_class = [model.config.id2label[t] for t in predicted_token_class_ids[0].numpy().tolist()]
+                        predictions = predicted_token_class
+                        for token, prediction in zip(tokens, predictions):
+                            if (token == "[SEP]" or token == "[CLS]"):
+                                continue
+                            line_in_csv = token + tab + prediction + newline
+                            out_file.write(line_in_csv)
 
             in_file.close()
             out_file.close()
@@ -97,11 +121,12 @@ class NLP_Preprocessing:
 
     def pytorch_model(self):
         model = AutoModelForTokenClassification.from_pretrained(self.model_name)
-        return model
+        
+        return model , "pt"
 
     def tensorflow_model(self):
         model = TFAutoModelForTokenClassification.from_pretrained(self.model_name)
-        return model
+        return model , "tf"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Utility to train huggingface transformer model with a custom dataset.")
