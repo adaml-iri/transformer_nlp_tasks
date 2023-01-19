@@ -52,7 +52,7 @@ class NLP_Preprocessing:
             return -1
         tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name, aggregation_strategy="none")
         in_file = open(str(self.infile), 'r')
-        out_file = open(str(self.output), "a")
+        out_file = open(str(self.output), "a+")
         line = in_file.readline()
         text = ""
         counter = 0
@@ -107,7 +107,7 @@ class NLP_Preprocessing:
         N = 100
         count = 0
         text = ""
-        out_file = open(str(self.output), "a")
+        out_file = open(str(self.output), "a+")
         in_file = open(str(self.infile), 'r')
         line = in_file.readline()
         while line != "":
